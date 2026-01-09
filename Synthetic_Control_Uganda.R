@@ -51,14 +51,6 @@ data <- data %>%
 
 # --- Missing Data Handling and Interpolation ---
 
-# Initial check for NAs in the outcome variable ('schl_enroll')
-# na_counts_by_group <- data %>%
-#   group_by(country_name) %>%
-#   summarise(na_count = sum(is.na(schl_enroll)))
-
-# # Writes NA counts to clipboard for review (optional but useful)
-# write.table(na_counts_by_group, file = pipe("pbcopy"), sep = "\t", row.names = FALSE)
-
 # Interpolate small gaps in school enrollment (by country)
 # 'na.approx' - linear interpolation.
 # 'maxgap = 6': Only interpolate if the gap is 6 years or less.
@@ -87,12 +79,6 @@ data <- data %>%
   ) %>%
   ungroup()
 
-# Final check for countries to be used in the donor pool
-# na_counts_by_group <- data %>%
-#   group_by(country_name) %>%
-#   summarise(na_count = sum(is.na(schl_enroll_int)))
-# write.table(na_counts_by_group, file = pipe("pbcopy"), sep = "\t", row.names = FALSE)
-
 # Convert back to data frame (necessary because 'dataprep' expects it)
 data <- as.data.frame(data)
 
@@ -104,14 +90,6 @@ data <- data %>%
 
 # Define the set of predictor variables for the SCM
 predictors = c("pop_growth", "fertility", "mortality_under5", "gdp_pc")
-
-####
-# Sanity check: Ensure predictors are numeric (required by 'synth' package)
-# for(i in predictors){
-#   if(mode(data[,i]) != "numeric"){
-#     print(paste(i, "is not numeric:", mode(data[,i])))
-#   }
-# }
 
 # ==========================================================
 # 3. SYNTHETIC CONTROL METHOD EXECUTION
@@ -163,14 +141,14 @@ years <- dataprep_out$tag$time.plot # The full time series (1980-2005)
 
 # Plot the main result: Uganda vs. Synthetic Uganda Enrollment
 plot(
-years,
-uganda_actual,
-type = "l",
-lwd = 2,
-col = "black",
-xlab = "Year",
-ylab = "Primary School Enrollment",
-main = "Impact of UPE on Primary Enrollment"
+  years,
+  uganda_actual,
+  type = "l",
+  lwd = 2,
+  col = "black",
+  xlab = "Year",
+  ylab = "Primary School Enrollment",
+  main = "Impact of UPE on Primary Enrollment"
 )
 
 lines(
@@ -197,7 +175,6 @@ legend(
 year_of_interest <- 1997
 t_idx <- which(years == year_of_interest)
 effect_1997 <- uganda_actual[t_idx] - uganda_synth[t_idx]
-# print(paste("Causal point estimate at 1997:", round(effect_1997, 2)))
 
 
 # ==========================================================
@@ -258,7 +235,6 @@ balance_table <- uganda_balance %>%
 
 # Output balance table (shows how well Synthetic Uganda matches Actual Uganda)
 balance_table
-# write.table(balance_table, file = pipe("pbcopy"), sep = "\t", row.names = FALSE)
 
 
 # --- 5.2. Root Mean Squared Prediction Error (RMSPE) ---
@@ -266,12 +242,10 @@ balance_table
 # Compute pre-treatment RMSPE (measure of pre-treatment fit)
 pre_period <- years %in% pre_years
 pre_rmspe <- sqrt(mean((uganda_actual[pre_period] - uganda_synth[pre_period])^2, na.rm = TRUE))
-# print(paste("Pre-treatment RMSPE:", round(pre_rmspe, 2)))
 
 # Compute post-treatment RMSPE (measure of post-treatment gap size)
 post_period <- years %in% post_years
 post_rmspe <- sqrt(mean((uganda_actual[post_period] - uganda_synth[post_period])^2, na.rm = TRUE))
-# print(paste("Post-treatment RMSPE:", round(post_rmspe, 2)))
 
 # Post / Pre RMSPE Ratio (key diagnostic for inference)
 rmspe_ratio <- post_rmspe / pre_rmspe
@@ -353,19 +327,18 @@ placebo_df <- data.frame(
   relocate(country_name, .after = country_id)
 
 # Filter placebos: Drop poorly fitted placebos 
-#(Pre-RMSPE > 2x Uganda's Pre-RMSPE) as is done in general practice
+# (Pre-RMSPE > 2x Uganda's Pre-RMSPE) as is standard practice to ensure comparability.
 placebo_df <- placebo_df %>%
   filter(pre_rmspe <= 2 * uganda_result$pre_rmspe)
 
 # Randomization-style p-value: Share of placebo units with a ratio as large as or larger than Uganda's
 p_value <- mean(placebo_df$ratio >= uganda_result$ratio)
-# print(paste("p-value:", round(p_value, 3)))
 
 
 # --- FIGURE 1: Gap Paths (Uganda vs Placebos) ---
 gap_mat <- do.call(
-cbind,
-lapply(placebo_results[as.character(placebo_df$country_id)], `[[`, "gap") # Filter to fitted placebos
+  cbind,
+  lapply(placebo_results[as.character(placebo_df$country_id)], `[[`, "gap") # Filter to fitted placebos
 )
 
 years_plot <- c(pre_years, post_years)
@@ -403,15 +376,16 @@ legend(
 # V-weights show the importance of each predictor in minimizing the pre-treatment SSR.
 V_weights <- synth_out$solution.v
 print(V_weights)
-# write.table(V_weights, file = pipe("pbcopy"), sep = "\t", row.names = FALSE)
 
 
 # ==========================================================
 # 6. POST-ANALYSIS: DESCRIPTIVE PLOTS
 # ==========================================================
 # These plots use a longer time series (up to 2020) and focus on Uganda only.
+# Clear the environment to ensure this section runs independently from the SCM analysis above.
+# This prevents objects from the first part (like 'data') from interfering with the re-loading below.
+rm(list = ls()) 
 
-rm(list = ls()) # Clear environment 
 # Re-read full data
 data <- as.data.frame(read_csv("panel_WBD.csv"))
 
@@ -434,8 +408,8 @@ uganda_post <- uganda_post %>%
 # --- CORE descriptive plots ---
 
 # Pupil–teacher ratio over time (Indicator of supply strain)
-ggplot(uganda_post, aes(x = year, y = pupil_teacher_int)) +
-geom_line(linewidth = 1.2) +
+p1 <- ggplot(uganda_post, aes(x = year, y = pupil_teacher_int)) +
+  geom_line(linewidth = 1.2) +
   geom_vline(xintercept = 1997, linetype = "dashed", color = "red") +
   labs(
     title = "Pupil–Teacher Ratio in Uganda before & after UPE",
@@ -443,11 +417,12 @@ geom_line(linewidth = 1.2) +
     y = "Pupils per Teacher"
   ) +
   theme_minimal()
+print(p1)
 
 
 # Gender-specific enrolment dynamics (Equity analysis)
-uganda_post %>%
-select(year, schl_enroll_F, schl_enroll_M) %>%
+p2 <- uganda_post %>%
+  select(year, schl_enroll_F, schl_enroll_M) %>%
   pivot_longer(
     cols = c(schl_enroll_F, schl_enroll_M),
     names_to = "gender",
@@ -475,5 +450,6 @@ select(year, schl_enroll_F, schl_enroll_M) %>%
     legend.text = element_text(size = 11),
     plot.title = element_text(face = "bold")
   )
+print(p2)
 
 ##### End
